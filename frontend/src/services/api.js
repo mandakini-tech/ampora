@@ -1,5 +1,34 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
+const backendApiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+
+const getCachedData = () => ({
+  isLive: false,
+  consumers: JSON.parse(localStorage.getItem('ampora_consumers') || '[]'),
+  meterReadings: JSON.parse(localStorage.getItem('ampora_readings') || '[]'),
+  bills: JSON.parse(localStorage.getItem('ampora_bills') || '[]'),
+  payments: JSON.parse(localStorage.getItem('ampora_payments') || '[]'),
+  complaints: JSON.parse(localStorage.getItem('ampora_complaints') || '[]'),
+  users: JSON.parse(localStorage.getItem('ampora_users') || 'null') || defaultUsers,
+  settings: JSON.parse(localStorage.getItem('ampora_settings') || 'null') || defaultSettings,
+  tariffSlabs: JSON.parse(localStorage.getItem('ampora_slabs') || 'null') || defaultTariffSlabs,
+});
+
+const requestBackend = async (path, method = 'GET', body) => {
+  const response = await fetch(`${backendApiBaseUrl}${path}`, {
+    method,
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const result = await response.json();
+
+  if (!response.ok || result.success === false) {
+    throw new Error(result.error || result.message || `Backend request failed (${response.status})`);
+  }
+
+  return result;
+};
+
 // ==============================================================================
 // DEFAULT SYSTEM CONSTANTS (Used when tables are initially empty)
 // ==============================================================================
@@ -289,23 +318,66 @@ export const mapSlabToDb = (sl) => ({
 });
 
 // ==============================================================================
-// UNIFIED DATA ACCESS SERVICES (SUPABASE)
+// UNIFIED DATA ACCESS SERVICES (EXPRESS API OR SUPABASE)
 // ==============================================================================
 
 export const api = {
   async fetchAll() {
+    if (backendApiBaseUrl) {
+      try {
+        const [
+          consumersRes,
+          readingsRes,
+          billsRes,
+          paymentsRes,
+          complaintsRes,
+          usersRes,
+          settingsRes,
+          slabsRes,
+        ] = await Promise.all([
+          requestBackend('/consumers'),
+          requestBackend('/readings'),
+          requestBackend('/bills'),
+          requestBackend('/payments'),
+          requestBackend('/complaints'),
+          requestBackend('/users'),
+          requestBackend('/settings'),
+          requestBackend('/settings/tariff-slabs'),
+        ]);
+        const results = [
+          consumersRes,
+          readingsRes,
+          billsRes,
+          paymentsRes,
+          complaintsRes,
+          usersRes,
+          settingsRes,
+          slabsRes,
+        ];
+
+        if (results.some((result) => result.source === 'standby')) {
+          return getCachedData();
+        }
+
+        return {
+          isLive: true,
+          consumers: (consumersRes.data || []).map(mapConsumerFromDb),
+          meterReadings: (readingsRes.data || []).map(mapReadingFromDb),
+          bills: (billsRes.data || []).map(mapBillFromDb),
+          payments: (paymentsRes.data || []).map(mapPaymentFromDb),
+          complaints: (complaintsRes.data || []).map(mapComplaintFromDb),
+          users: (usersRes.data || []).map(mapUserFromDb),
+          settings: settingsRes.data ? mapSettingsFromDb(settingsRes.data) : defaultSettings,
+          tariffSlabs: (slabsRes.data || []).map(mapSlabFromDb),
+        };
+      } catch (err) {
+        console.warn('Backend API fetch failed:', err);
+        return { ...getCachedData(), error: err.message };
+      }
+    }
+
     if (!isSupabaseConfigured() || !supabase) {
-      return {
-        isLive: false,
-        consumers: JSON.parse(localStorage.getItem('ampora_consumers') || '[]'),
-        meterReadings: JSON.parse(localStorage.getItem('ampora_readings') || '[]'),
-        bills: JSON.parse(localStorage.getItem('ampora_bills') || '[]'),
-        payments: JSON.parse(localStorage.getItem('ampora_payments') || '[]'),
-        complaints: JSON.parse(localStorage.getItem('ampora_complaints') || '[]'),
-        users: JSON.parse(localStorage.getItem('ampora_users') || 'null') || defaultUsers,
-        settings: JSON.parse(localStorage.getItem('ampora_settings') || 'null') || defaultSettings,
-        tariffSlabs: JSON.parse(localStorage.getItem('ampora_slabs') || 'null') || defaultTariffSlabs,
-      };
+      return getCachedData();
     }
 
     try {
@@ -380,22 +452,19 @@ export const api = {
     } catch (err) {
       console.warn('Supabase fetch failed:', err);
       return {
-        isLive: false,
+        ...getCachedData(),
         error: err.message,
-        consumers: JSON.parse(localStorage.getItem('ampora_consumers') || '[]'),
-        meterReadings: JSON.parse(localStorage.getItem('ampora_readings') || '[]'),
-        bills: JSON.parse(localStorage.getItem('ampora_bills') || '[]'),
-        payments: JSON.parse(localStorage.getItem('ampora_payments') || '[]'),
-        complaints: JSON.parse(localStorage.getItem('ampora_complaints') || '[]'),
-        users: JSON.parse(localStorage.getItem('ampora_users') || 'null') || defaultUsers,
-        settings: JSON.parse(localStorage.getItem('ampora_settings') || 'null') || defaultSettings,
-        tariffSlabs: JSON.parse(localStorage.getItem('ampora_slabs') || 'null') || defaultTariffSlabs,
       };
     }
   },
 
   // Users
   async addUser(user) {
+    if (backendApiBaseUrl) {
+      await requestBackend('/users', 'POST', mapUserToDb(user));
+      return;
+    }
+
     if (isSupabaseConfigured() && supabase) {
       try {
         const { error } = await supabase.from('users').upsert([mapUserToDb(user)]);
@@ -406,8 +475,46 @@ export const api = {
     }
   },
 
+  async updateUser(id, fields) {
+    const dbFields = {};
+    if (fields.name !== undefined) dbFields.name = fields.name;
+    if (fields.email !== undefined) dbFields.email = fields.email;
+    if (fields.role !== undefined) dbFields.role = fields.role;
+    if (fields.status !== undefined) dbFields.status = fields.status;
+    if (fields.consumerId !== undefined) dbFields.consumer_id = fields.consumerId;
+    if (fields.avatar !== undefined) dbFields.avatar = fields.avatar;
+    if (fields.lastLogin !== undefined) dbFields.last_login = fields.lastLogin;
+
+    if (backendApiBaseUrl) {
+      await requestBackend(`/users/${encodeURIComponent(id)}`, 'PUT', dbFields);
+      return;
+    }
+
+    if (isSupabaseConfigured() && supabase) {
+      const { error } = await supabase.from('users').update(dbFields).eq('id', id);
+      if (error) throw error;
+    }
+  },
+
+  async deleteUser(id) {
+    if (backendApiBaseUrl) {
+      await requestBackend(`/users/${encodeURIComponent(id)}`, 'DELETE');
+      return;
+    }
+
+    if (isSupabaseConfigured() && supabase) {
+      const { error } = await supabase.from('users').delete().eq('id', id);
+      if (error) throw error;
+    }
+  },
+
   // Consumers
   async addConsumer(consumer) {
+    if (backendApiBaseUrl) {
+      await requestBackend('/consumers', 'POST', mapConsumerToDb(consumer));
+      return;
+    }
+
     if (isSupabaseConfigured() && supabase) {
       try {
         const { error } = await supabase.from('consumers').insert([mapConsumerToDb(consumer)]);
@@ -419,6 +526,21 @@ export const api = {
   },
 
   async updateConsumer(id, fields) {
+    if (backendApiBaseUrl) {
+      const dbFields = {};
+      if (fields.name) dbFields.name = fields.name;
+      if (fields.email) dbFields.email = fields.email;
+      if (fields.phone) dbFields.phone = fields.phone;
+      if (fields.address) dbFields.address = fields.address;
+      if (fields.status) dbFields.status = fields.status;
+      if (fields.connectionType) dbFields.connection_type = fields.connectionType;
+      if (fields.tariffCategory) dbFields.tariff_category = fields.tariffCategory;
+      if (fields.currentReading !== undefined) dbFields.current_reading = fields.currentReading;
+      if (fields.previousReading !== undefined) dbFields.previous_reading = fields.previousReading;
+      await requestBackend(`/consumers/${encodeURIComponent(id)}`, 'PUT', dbFields);
+      return;
+    }
+
     if (isSupabaseConfigured() && supabase) {
       try {
         const dbFields = {};
@@ -441,6 +563,11 @@ export const api = {
   },
 
   async deleteConsumer(id) {
+    if (backendApiBaseUrl) {
+      await requestBackend(`/consumers/${encodeURIComponent(id)}`, 'DELETE');
+      return;
+    }
+
     if (isSupabaseConfigured() && supabase) {
       try {
         const { error } = await supabase.from('consumers').delete().eq('id', id);
@@ -453,6 +580,11 @@ export const api = {
 
   // Meter Readings
   async addMeterReading(reading) {
+    if (backendApiBaseUrl) {
+      await requestBackend('/readings', 'POST', mapReadingToDb(reading));
+      return;
+    }
+
     if (isSupabaseConfigured() && supabase) {
       try {
         const { error } = await supabase.from('meter_readings').insert([mapReadingToDb(reading)]);
@@ -465,6 +597,14 @@ export const api = {
 
   // Bills
   async addBill(bill) {
+    if (backendApiBaseUrl) {
+      await requestBackend('/bills', 'POST', {
+        ...mapBillToDb(bill),
+        connectionType: bill.connectionType,
+      });
+      return;
+    }
+
     if (isSupabaseConfigured() && supabase) {
       try {
         const { error } = await supabase.from('bills').insert([mapBillToDb(bill)]);
@@ -476,6 +616,11 @@ export const api = {
   },
 
   async updateBillStatus(id, status) {
+    if (backendApiBaseUrl) {
+      await requestBackend(`/bills/${encodeURIComponent(id)}`, 'PATCH', { status });
+      return;
+    }
+
     if (isSupabaseConfigured() && supabase) {
       try {
         const { error } = await supabase.from('bills').update({ status }).eq('id', id);
@@ -488,6 +633,11 @@ export const api = {
 
   // Payments
   async addPayment(payment) {
+    if (backendApiBaseUrl) {
+      await requestBackend('/payments', 'POST', mapPaymentToDb(payment));
+      return;
+    }
+
     if (isSupabaseConfigured() && supabase) {
       try {
         const { error } = await supabase.from('payments').insert([mapPaymentToDb(payment)]);
@@ -500,6 +650,11 @@ export const api = {
 
   // Complaints
   async addComplaint(complaint) {
+    if (backendApiBaseUrl) {
+      await requestBackend('/complaints', 'POST', mapComplaintToDb(complaint));
+      return;
+    }
+
     if (isSupabaseConfigured() && supabase) {
       try {
         const { error } = await supabase.from('complaints').insert([mapComplaintToDb(complaint)]);
@@ -511,6 +666,16 @@ export const api = {
   },
 
   async updateComplaint(id, updates) {
+    if (backendApiBaseUrl) {
+      const dbUpdates = {};
+      if (updates.status !== undefined) dbUpdates.status = updates.status;
+      if (updates.assignedTo !== undefined) dbUpdates.assigned_to = updates.assignedTo;
+      if (updates.resolutionNotes !== undefined) dbUpdates.resolution_notes = updates.resolutionNotes;
+      if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
+      await requestBackend(`/complaints/${encodeURIComponent(id)}`, 'PUT', dbUpdates);
+      return;
+    }
+
     if (isSupabaseConfigured() && supabase) {
       try {
         const dbUpdates = {};
@@ -529,6 +694,11 @@ export const api = {
 
   // Settings & Tariff
   async updateSettings(settings) {
+    if (backendApiBaseUrl) {
+      await requestBackend('/settings', 'PUT', mapSettingsToDb(settings));
+      return;
+    }
+
     if (isSupabaseConfigured() && supabase) {
       try {
         const { error } = await supabase
@@ -542,6 +712,11 @@ export const api = {
   },
 
   async updateTariffSlabs(slabs) {
+    if (backendApiBaseUrl) {
+      await requestBackend('/settings/tariff-slabs', 'PUT', slabs.map(mapSlabToDb));
+      return;
+    }
+
     if (isSupabaseConfigured() && supabase) {
       try {
         const dbSlabs = slabs.map(mapSlabToDb);

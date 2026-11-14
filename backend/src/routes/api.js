@@ -6,6 +6,7 @@ import paymentRoutes from './payments.js';
 import complaintRoutes from './complaints.js';
 import settingsRoutes from './settings.js';
 import statsRoutes from './stats.js';
+import userRoutes from './users.js';
 import { isSupabaseConfigured } from '../config/supabase.js';
 
 const router = Router();
@@ -27,6 +28,7 @@ router.use('/payments', paymentRoutes);
 router.use('/complaints', complaintRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/stats', statsRoutes);
+router.use('/users', userRoutes);
 
 export default router;
 

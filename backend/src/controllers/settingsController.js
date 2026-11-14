@@ -14,7 +14,7 @@ export const getSettings = async (req, res) => {
       .from('system_settings')
       .select('*')
       .eq('id', 'default')
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
 
@@ -45,8 +45,7 @@ export const updateSettings = async (req, res) => {
 
     const { data, error } = await supabase
       .from('system_settings')
-      .update(updates)
-      .eq('id', 'default')
+      .upsert([{ ...updates, id: 'default' }])
       .select()
       .single();
 

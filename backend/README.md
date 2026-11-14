@@ -105,10 +105,15 @@ The server will start at `http://localhost:5000`. You can test health by visitin
 | `POST` | `/api/consumers` | Register a new consumer |
 | `PUT` | `/api/consumers/:id` | Update consumer profile |
 | `DELETE` | `/api/consumers/:id` | Remove a consumer |
+| `GET` | `/api/users` | List system users |
+| `POST` | `/api/users` | Create or update a system user |
+| `PUT` | `/api/users/:id` | Update a system user |
+| `DELETE` | `/api/users/:id` | Remove a system user |
 | `GET` | `/api/readings` | List meter reading records |
 | `POST` | `/api/readings` | Record new meter reading |
 | `GET` | `/api/bills` | List electricity bills |
 | `POST` | `/api/bills` | Generate a new bill (auto-calculates slab tiers & charges) |
+| `PATCH` | `/api/bills/:id` | Update bill status |
 | `GET` | `/api/payments` | List payment transactions |
 | `POST` | `/api/payments` | Record bill payment receipt & mark bill as Paid |
 | `GET` | `/api/complaints` | List consumer complaints |
@@ -119,4 +124,6 @@ The server will start at `http://localhost:5000`. You can test health by visitin
 | `PUT` | `/api/settings` | Update system billing settings |
 | `GET` | `/api/settings/tariff-slabs` | Get active tariff tiers |
 | `PUT` | `/api/settings/tariff-slabs` | Update tariff slabs |
+
+Set `VITE_API_BASE_URL=http://localhost:5000/api` in `frontend/.env` to use these REST endpoints. When it is unset, the frontend continues to access Supabase directly.
 

@@ -16,19 +16,19 @@ export const calculateCharges = (units, connectionType = 'Residential', slabs = 
   // Slab calculation
   for (const slab of defaultSlabs) {
     if (unitsLeft <= 0) break;
-    const slabCapacity = (slab.max_units - slab.min_units) + 1;
+    const slabCapacity = slab.max_units - slab.min_units;
     const unitsInThisSlab = Math.min(unitsLeft, slabCapacity);
     energyCharges += unitsInThisSlab * Number(slab.rate);
     unitsLeft -= unitsInThisSlab;
   }
 
   const fixedMap = settings.fixed_charges || { Residential: 120, Commercial: 350, Industrial: 1200 };
-  const fixedCharges = Number(fixedMap[connectionType] || 120);
+  const fixedCharges = Number(fixedMap[connectionType] ?? 120);
   const subtotal = energyCharges + fixedCharges;
-  const taxRate = Number(settings.tax_rate_percent || 9.0);
+  const taxRate = Number(settings.tax_rate_percent ?? 9.0);
   const taxes = (subtotal * taxRate) / 100;
   
-  const subsidyAmount = Number(settings.subsidy_amount || 100);
+  const subsidyAmount = Number(settings.subsidy_amount ?? 100);
   const subsidy = (connectionType === 'Residential' && u <= 200) ? subsidyAmount : 0;
   const totalAmount = Math.max(0, subtotal + taxes - subsidy);
 
@@ -79,8 +79,23 @@ export const createBill = async (req, res) => {
 
     const units = Number(billData.unitsConsumed || billData.units_consumed || 0);
     const connectionType = billData.connectionType || 'Residential';
+    let slabs = [];
+    let settings = {};
 
-    const calculated = calculateCharges(units, connectionType);
+    if (isSupabaseConfigured()) {
+      const [slabsResult, settingsResult] = await Promise.all([
+        supabase.from('tariff_slabs').select('*').order('id', { ascending: true }),
+        supabase.from('system_settings').select('*').eq('id', 'default').maybeSingle(),
+      ]);
+
+      if (slabsResult.error) throw slabsResult.error;
+      if (settingsResult.error) throw settingsResult.error;
+
+      slabs = slabsResult.data || [];
+      settings = settingsResult.data || {};
+    }
+
+    const calculated = calculateCharges(units, connectionType, slabs, settings);
 
     const today = new Date();
     const dueDate = new Date(today);
@@ -139,6 +154,38 @@ export const createBill = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to generate bill',
+      error: error.message,
+    });
+  }
+};
+
+export const updateBillStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!isSupabaseConfigured()) {
+      return res.status(200).json({
+        success: true,
+        source: 'standby',
+        data: { id, status },
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('bills')
+      .update({ status })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update bill status',
       error: error.message,
     });
   }

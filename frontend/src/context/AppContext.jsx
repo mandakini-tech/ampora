@@ -107,7 +107,7 @@ export const AppProvider = ({ children }) => {
     localStorage.setItem('ampora_slabs', JSON.stringify(tariffSlabs));
   }, [tariffSlabs]);
 
-  // Synchronize from Supabase
+  // Synchronize from the configured backend
   const refreshData = async (showNotification = false) => {
     setIsSyncing(true);
     try {
@@ -122,7 +122,7 @@ export const AppProvider = ({ children }) => {
         if (data.users?.length) setUsers(data.users);
         if (data.settings) setSettings(data.settings);
         if (data.tariffSlabs?.length) setTariffSlabs(data.tariffSlabs);
-        if (showNotification) addToast('Database synchronized with Supabase', 'success');
+        if (showNotification) addToast('Database synchronized', 'success');
       } else {
         setIsSupabaseLive(false);
       }
@@ -144,6 +144,13 @@ export const AppProvider = ({ children }) => {
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
+  };
+
+  const persist = (request, message) => {
+    request.catch((error) => {
+      console.error(message, error);
+      addToast(message, 'error');
+    });
   };
 
   const removeToast = (id) => {
@@ -197,7 +204,8 @@ export const AppProvider = ({ children }) => {
     try {
       await api.addUser(newUser);
     } catch (e) {
-      console.error('Failed to save user to Supabase:', e);
+      console.error('Failed to save user:', e);
+      addToast('Could not save user to the database', 'error');
     }
 
     // If Consumer role, also create consumer profile in database
@@ -226,7 +234,8 @@ export const AppProvider = ({ children }) => {
       try {
         await api.addConsumer(newConsumer);
       } catch (e) {
-        console.error('Failed to save consumer to Supabase:', e);
+        console.error('Failed to save consumer:', e);
+        addToast('Could not save consumer to the database', 'error');
       }
     }
 
@@ -323,7 +332,7 @@ export const AppProvider = ({ children }) => {
       currentReading: Number(newConsumerData.initialReading || 0),
     };
     setConsumers((prev) => [newConsumer, ...prev]);
-    api.addConsumer(newConsumer);
+    persist(api.addConsumer(newConsumer), 'Could not save consumer to the database');
     addToast(`Consumer ${newConsumer.name} registered with ID ${id}!`, 'success');
     return newConsumer;
   };
@@ -332,13 +341,13 @@ export const AppProvider = ({ children }) => {
     setConsumers((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...updatedFields } : c))
     );
-    api.updateConsumer(id, updatedFields);
+    persist(api.updateConsumer(id, updatedFields), 'Could not update consumer in the database');
     addToast(`Consumer ${id} updated successfully`, 'success');
   };
 
   const deleteConsumer = (id) => {
     setConsumers((prev) => prev.filter((c) => c.id !== id));
-    api.deleteConsumer(id);
+    persist(api.deleteConsumer(id), 'Could not delete consumer from the database');
     addToast(`Consumer ${id} deleted from system`, 'info');
   };
 
@@ -370,7 +379,7 @@ export const AppProvider = ({ children }) => {
     };
 
     setMeterReadings((prev) => [newReading, ...prev]);
-    api.addMeterReading(newReading);
+    persist(api.addMeterReading(newReading), 'Could not save meter reading to the database');
     
     updateConsumer(consumer.id, {
       previousReading: Number(readingData.previousReading),
@@ -400,6 +409,8 @@ export const AppProvider = ({ children }) => {
       consumerId: consumer.id,
       consumerName: consumer.name,
       meterNumber: consumer.meterNumber,
+      connectionType: consumer.connectionType,
+      meterReadingId: billData.meterReadingId || null,
       billingPeriod: billData.billingPeriod || 'Current Billing Cycle',
       billDate: today.toISOString().split('T')[0],
       dueDate: dueDate.toISOString().split('T')[0],
@@ -416,7 +427,7 @@ export const AppProvider = ({ children }) => {
     };
 
     setBills((prev) => [newBill, ...prev]);
-    api.addBill(newBill);
+    persist(api.addBill(newBill), 'Could not save bill to the database');
 
     if (billData.meterReadingId) {
       setMeterReadings((prev) =>
@@ -443,7 +454,7 @@ export const AppProvider = ({ children }) => {
     setBills((prev) =>
       prev.map((b) => (b.id === billId ? { ...b, status: 'Paid' } : b))
     );
-    api.updateBillStatus(billId, 'Paid');
+    persist(api.updateBillStatus(billId, 'Paid'), 'Could not update bill in the database');
 
     const txnId = `TXN-${Math.floor(800000 + Math.random() * 100000)}`;
     const now = new Date();
@@ -462,7 +473,7 @@ export const AppProvider = ({ children }) => {
     };
 
     setPayments((prev) => [newPayment, ...prev]);
-    api.addPayment(newPayment);
+    persist(api.addPayment(newPayment), 'Could not save payment to the database');
     addToast(`Payment of ₹${targetBill.totalAmount} received for ${targetBill.id}`, 'success');
     return newPayment;
   };
@@ -483,7 +494,7 @@ export const AppProvider = ({ children }) => {
     };
 
     setComplaints((prev) => [newComplaint, ...prev]);
-    api.addComplaint(newComplaint);
+    persist(api.addComplaint(newComplaint), 'Could not save complaint to the database');
     addToast(`Complaint #${id} submitted successfully`, 'success');
     return newComplaint;
   };
@@ -502,7 +513,7 @@ export const AppProvider = ({ children }) => {
         return c;
       })
     );
-    api.updateComplaint(id, { status, resolutionNotes, assignedTo });
+    persist(api.updateComplaint(id, { status, resolutionNotes, assignedTo }), 'Could not update complaint in the database');
     addToast(`Complaint #${id} updated to ${status}`, 'success');
   };
 
@@ -523,23 +534,25 @@ export const AppProvider = ({ children }) => {
     setUsers((prev) =>
       prev.map((u) => (u.id === id ? { ...u, ...updatedFields } : u))
     );
+    persist(api.updateUser(id, updatedFields), 'Could not update user in the database');
     addToast(`User ${id} updated`, 'success');
   };
 
   const deleteUser = (id) => {
     setUsers((prev) => prev.filter((u) => u.id !== id));
+    persist(api.deleteUser(id), 'Could not delete user from the database');
     addToast(`User ${id} deleted`, 'info');
   };
 
   const updateSettings = (newSettings) => {
     setSettings(newSettings);
-    api.updateSettings(newSettings);
+    persist(api.updateSettings(newSettings), 'Could not save settings to the database');
     addToast('System settings updated successfully', 'success');
   };
 
   const updateTariffSlabs = (newSlabs) => {
     setTariffSlabs(newSlabs);
-    api.updateTariffSlabs(newSlabs);
+    persist(api.updateTariffSlabs(newSlabs), 'Could not save tariff slabs to the database');
     addToast('Tariff slabs updated successfully', 'success');
   };
 
