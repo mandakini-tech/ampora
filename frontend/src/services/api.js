@@ -25,6 +25,9 @@ const requestBackend = async (path, method = 'GET', body) => {
   if (!response.ok || result.success === false) {
     throw new Error(result.error || result.message || `Backend request failed (${response.status})`);
   }
+  if (method !== 'GET' && result.source === 'standby') {
+    throw new Error('Backend is in standby mode and did not save the change to Supabase.');
+  }
 
   return result;
 };
@@ -466,12 +469,8 @@ export const api = {
     }
 
     if (isSupabaseConfigured() && supabase) {
-      try {
-        const { error } = await supabase.from('users').upsert([mapUserToDb(user)]);
-        if (error) console.error('Supabase addUser error:', error);
-      } catch (e) {
-        console.error('Supabase addUser exception:', e);
-      }
+      const { error } = await supabase.from('users').upsert([mapUserToDb(user)]);
+      if (error) throw error;
     }
   },
 
@@ -516,12 +515,8 @@ export const api = {
     }
 
     if (isSupabaseConfigured() && supabase) {
-      try {
-        const { error } = await supabase.from('consumers').insert([mapConsumerToDb(consumer)]);
-        if (error) console.error('Supabase addConsumer error:', error);
-      } catch (e) {
-        console.error('Supabase addConsumer exception:', e);
-      }
+      const { error } = await supabase.from('consumers').insert([mapConsumerToDb(consumer)]);
+      if (error) throw error;
     }
   },
 

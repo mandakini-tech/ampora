@@ -25,13 +25,19 @@ export const LoginPage = () => {
   const [password, setPassword] = useState('password123');
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
     setIsLoading(true);
+    setError('');
     setTimeout(() => {
-      login(role, email, password);
+      const signedIn = login(role, email, password);
       setIsLoading(false);
+      if (!signedIn) {
+        setError('No registered account matches this role and email. Register your connection first.');
+        return;
+      }
       if (role === 'Consumer') {
         navigate('/consumer-portal');
       } else {
@@ -49,10 +55,15 @@ export const LoginPage = () => {
 
     setRole(demoRole);
     setEmail(demoEmail);
+    setError('');
 
     setTimeout(() => {
-      login(demoRole, demoEmail, 'password123');
+      const signedIn = login(demoRole, demoEmail, 'password123');
       setIsLoading(false);
+      if (!signedIn) {
+        setError('This demo account is not in the database. Register an account or use a seeded account.');
+        return;
+      }
       if (demoRole === 'Consumer') {
         navigate('/consumer-portal');
       } else {
@@ -142,9 +153,15 @@ export const LoginPage = () => {
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-slate-900">Portal Login</h2>
             <p className="text-xs text-slate-500 mt-1">
-              Select your role and enter credentials to access your dashboard
+              Select your role and use an account already registered in the database
             </p>
           </div>
+
+          {error && (
+            <div role="alert" className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              {error}
+            </div>
+          )}
 
           {/* Viva Quick Demo Selector */}
           <div className="mb-6 p-3 rounded-xl bg-blue-50/70 border border-blue-200">
@@ -260,7 +277,10 @@ export const LoginPage = () => {
               icon={Mail}
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError('');
+              }}
               placeholder="e.g. user@ampora.gov.in"
               required
             />
@@ -298,6 +318,9 @@ export const LoginPage = () => {
                 Forgot password?
               </a>
             </div>
+            <p className="text-[11px] text-slate-400">
+              Password authentication is not configured in this demo.
+            </p>
 
             {/* Submit Button */}
             <Button

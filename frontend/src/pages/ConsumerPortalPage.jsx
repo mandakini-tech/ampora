@@ -30,7 +30,7 @@ import {
 } from 'recharts';
 
 export const ConsumerPortalPage = () => {
-  const { currentUser, bills, payments, complaints, consumers, payBill, addComplaint } = useApp();
+  const { currentUser, bills, payments, complaints, consumers, meterReadings, payBill, addComplaint } = useApp();
 
   // Active consumer target: logged-in consumer
   const consumerId = currentUser?.consumerId;
@@ -58,18 +58,29 @@ export const ConsumerPortalPage = () => {
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
   const [viewingBill, setViewingBill] = useState(null);
 
-  // Recharts personal consumption data
-  const personalConsumptionData = [
-    { month: 'May', units: 110 },
-    { month: 'Jun', units: 145 },
-    { month: 'Jul', units: 160 },
-    { month: 'Aug', units: 135 },
-    { month: 'Sep', units: 120 },
-    { month: 'Oct', units: 130 },
-  ];
+  const monthlyConsumption = new Map();
+  meterReadings
+    .filter((reading) => reading.consumerId === consumerId)
+    .forEach((reading) => {
+      const date = new Date(`${reading.readingDate}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return;
+
+      const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+      const month = monthlyConsumption.get(monthKey) || {
+        month: date.toLocaleString('en-US', { month: 'short', year: '2-digit' }),
+        units: 0,
+        timestamp: date.getTime(),
+      };
+      month.units += Number(reading.unitsConsumed) || 0;
+      monthlyConsumption.set(monthKey, month);
+    });
+  const personalConsumptionData = Array.from(monthlyConsumption.values())
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .slice(-12);
 
   const handlePaySubmit = (e) => {
     e.preventDefault();
+    if (!currentBill) return;
     payBill(currentBill.id, payMethod, `${payMethod}/AUTOPAY-${Date.now().toString().slice(-4)}`);
     setIsPayModalOpen(false);
   };
@@ -93,18 +104,19 @@ export const ConsumerPortalPage = () => {
         <div>
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-blue-100 mb-2">
             <Zap className="w-3.5 h-3.5 text-yellow-300 fill-current" />
-            Meter Serial: MTR-884920 • LT-1 Domestic
+            Meter Serial: {consumerProfile?.meterNumber || 'Not linked'} • {consumerProfile?.tariffCategory || 'Consumer account'}
           </span>
           <h1 className="text-2xl font-extrabold tracking-tight">
             Welcome, {currentUser?.name || 'Rajesh Kumar'}
           </h1>
           <p className="text-blue-100 text-xs mt-1">
-            Consumer ID: <span className="font-mono font-bold text-white">{consumerId}</span> • Green Park Avenue
+            Consumer ID: <span className="font-mono font-bold text-white">{consumerId || 'Not linked'}</span>
+            {consumerProfile?.address ? ` • ${consumerProfile.address}` : ''}
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          {currentBill.status !== 'Paid' ? (
+          {currentBill && currentBill.status !== 'Paid' ? (
             <Button
               variant="primary"
               size="lg"
@@ -114,11 +126,15 @@ export const ConsumerPortalPage = () => {
             >
               Pay Current Bill (₹{currentBill.totalAmount})
             </Button>
-          ) : (
+          ) : currentBill ? (
             <div className="px-4 py-2 bg-emerald-500/20 border border-emerald-400/40 rounded-xl text-emerald-300 font-bold text-xs flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               Bill Cleared & Paid
             </div>
+          ) : (
+            <p className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-xs text-blue-100">
+              No bills are available yet.
+            </p>
           )}
         </div>
       </div>
@@ -127,28 +143,41 @@ export const ConsumerPortalPage = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-blue-600">
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Current Bill Amount</span>
-          <h3 className="text-2xl font-bold text-slate-900 mt-1">₹{currentBill.totalAmount}</h3>
-          <p className="text-xs text-slate-400 mt-1">Statement: {currentBill.billingPeriod}</p>
+          <h3 className="text-2xl font-bold text-slate-900 mt-1">{currentBill ? `₹${currentBill.totalAmount}` : '—'}</h3>
+          <p className="text-xs text-slate-400 mt-1">
+            {currentBill ? `Statement: ${currentBill.billingPeriod}` : 'No bill generated yet'}
+          </p>
         </Card>
 
         <Card className="border-l-4 border-l-emerald-600">
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Units Consumed</span>
-          <h3 className="text-2xl font-bold text-slate-900 mt-1">{currentBill.unitsConsumed} <span className="text-sm font-normal text-slate-500">kWh</span></h3>
-          <p className="text-xs text-slate-400 mt-1">{currentBill.previousReading} → {currentBill.currentReading}</p>
+          <h3 className="text-2xl font-bold text-slate-900 mt-1">
+            {currentBill ? currentBill.unitsConsumed : '—'}
+            {currentBill && <span className="text-sm font-normal text-slate-500"> kWh</span>}
+          </h3>
+          <p className="text-xs text-slate-400 mt-1">
+            {currentBill ? `${currentBill.previousReading} → ${currentBill.currentReading}` : 'No reading available'}
+          </p>
         </Card>
 
         <Card className="border-l-4 border-l-amber-600">
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Payment Status</span>
           <div className="mt-2">
-            <Badge variant={currentBill.status}>{currentBill.status}</Badge>
+            {currentBill ? <Badge variant={currentBill.status}>{currentBill.status}</Badge> : <span className="text-sm text-slate-500">No bill</span>}
           </div>
-          <p className="text-xs text-slate-400 mt-2">Due Date: {currentBill.dueDate}</p>
+          <p className="text-xs text-slate-400 mt-2">
+            {currentBill ? `Due Date: ${currentBill.dueDate}` : 'No due date'}
+          </p>
         </Card>
 
         <Card className="border-l-4 border-l-purple-600">
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Last Payment</span>
-          <h3 className="text-2xl font-bold text-slate-900 mt-1">₹{lastPayment.amount}</h3>
-          <p className="text-xs text-slate-400 mt-1">{lastPayment.paymentDate} via {lastPayment.paymentMethod}</p>
+          <h3 className="text-2xl font-bold text-slate-900 mt-1">
+            {lastPayment ? `₹${lastPayment.amount}` : 'No payments yet'}
+          </h3>
+          <p className="text-xs text-slate-400 mt-1">
+            {lastPayment ? `${lastPayment.paymentDate} via ${lastPayment.paymentMethod}` : 'Payment history will appear here'}
+          </p>
         </Card>
       </div>
 
@@ -157,17 +186,23 @@ export const ConsumerPortalPage = () => {
         {/* Personal Monthly Consumption Graph */}
         <Card title="My Electricity Consumption History (kWh)" className="lg:col-span-2">
           <div className="h-64 w-full pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={personalConsumptionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="month" tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
-                <YAxis tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', borderRadius: '8px', border: 'none', color: '#fff', fontSize: '12px' }}
-                />
-                <Line type="monotone" dataKey="units" stroke="#2563eb" strokeWidth={3} dot={{ r: 5, fill: '#2563eb' }} />
-              </LineChart>
-            </ResponsiveContainer>
+            {personalConsumptionData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={personalConsumptionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="month" tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                  <YAxis tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#0f172a', borderRadius: '8px', border: 'none', color: '#fff', fontSize: '12px' }}
+                  />
+                  <Line type="monotone" dataKey="units" stroke="#2563eb" strokeWidth={3} dot={{ r: 5, fill: '#2563eb' }} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-sm text-slate-500">
+                No meter readings yet. Your usage chart will appear after your first reading.
+              </div>
+            )}
           </div>
         </Card>
 
@@ -175,11 +210,13 @@ export const ConsumerPortalPage = () => {
         <Card title="Consumer Quick Services" subtitle="Manage your utility account">
           <div className="space-y-3">
             <button
+              disabled={!currentBill}
               onClick={() => {
+                if (!currentBill) return;
                 setViewingBill(currentBill);
                 setIsBillModalOpen(true);
               }}
-              className="w-full p-3.5 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 flex items-center justify-between text-left transition-all group"
+              className="w-full p-3.5 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 flex items-center justify-between text-left transition-all group disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-lg bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors">
@@ -193,8 +230,9 @@ export const ConsumerPortalPage = () => {
             </button>
 
             <button
-              onClick={() => setIsPayModalOpen(true)}
-              className="w-full p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 flex items-center justify-between text-left transition-all group"
+              disabled={!currentBill || currentBill.status === 'Paid'}
+              onClick={() => currentBill && setIsPayModalOpen(true)}
+              className="w-full p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 flex items-center justify-between text-left transition-all group disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
@@ -264,6 +302,13 @@ export const ConsumerPortalPage = () => {
                     </td>
                   </tr>
                 ))}
+                {!consumerBills.length && (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-8 text-center text-slate-500">
+                      No bills are available for this account yet.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -297,18 +342,21 @@ export const ConsumerPortalPage = () => {
                 )}
               </div>
             ))}
+            {!consumerComplaints.length && (
+              <p className="py-6 text-center text-xs text-slate-500">No support tickets yet.</p>
+            )}
           </div>
         </Card>
       </div>
 
       {/* ONLINE PAYMENT MODAL */}
       <Modal
-        isOpen={isPayModalOpen}
+        isOpen={isPayModalOpen && Boolean(currentBill)}
         onClose={() => setIsPayModalOpen(false)}
         title="Instant Electricity Bill Payment"
-        subtitle={`Clearing Invoice #${currentBill.id} - Total ₹${currentBill.totalAmount}`}
+        subtitle={currentBill ? `Clearing Invoice #${currentBill.id} - Total ₹${currentBill.totalAmount}` : undefined}
       >
-        <form onSubmit={handlePaySubmit} className="space-y-4">
+        {currentBill && <form onSubmit={handlePaySubmit} className="space-y-4">
           <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 flex justify-between items-center text-xs">
             <div>
               <p className="text-slate-500">Payable Amount:</p>
@@ -354,7 +402,7 @@ export const ConsumerPortalPage = () => {
               Authorize Payment ₹{currentBill.totalAmount}
             </Button>
           </div>
-        </form>
+        </form>}
       </Modal>
 
       {/* REGISTER COMPLAINT MODAL */}

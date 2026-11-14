@@ -119,7 +119,18 @@ export const AppProvider = ({ children }) => {
         setBills(data.bills || []);
         setPayments(data.payments || []);
         setComplaints(data.complaints || []);
-        if (data.users?.length) setUsers(data.users);
+        setUsers(data.users || []);
+        if (currentUser) {
+          const registeredUser = (data.users || []).find(
+            (user) => user.id === currentUser.id && user.email === currentUser.email
+          );
+          if (registeredUser) {
+            setCurrentUser(registeredUser);
+          } else {
+            setCurrentUser(null);
+            addToast('This saved session is not linked to a database account. Please register or sign in again.', 'error');
+          }
+        }
         if (data.settings) setSettings(data.settings);
         if (data.tariffSlabs?.length) setTariffSlabs(data.tariffSlabs);
         if (showNotification) addToast('Database synchronized', 'success');
@@ -158,27 +169,19 @@ export const AppProvider = ({ children }) => {
   };
 
   // Login / Switch Role
-  const login = (role, email, password) => {
-    const matchedUser = users.find((u) => u.role === role && u.email === email);
-    if (matchedUser) {
-      setCurrentUser(matchedUser);
-      addToast(`Welcome back, ${matchedUser.name}! (${matchedUser.role})`, 'success');
-      return true;
-    } else {
-      // Fallback login if custom email typed
-      const newUser = {
-        id: `USR-${Date.now().toString().slice(-3)}`,
-        name: email.split('@')[0] || 'User',
-        email: email,
-        role: role,
-        status: 'Active',
-        lastLogin: 'Just now',
-        consumerId: role === 'Consumer' ? 'PWR-2026-1042' : undefined,
-      };
-      setCurrentUser(newUser);
-      addToast(`Logged in as ${role}`, 'success');
-      return true;
+  const login = (role, email) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const matchedUser = users.find(
+      (user) => user.role === role && user.email?.toLowerCase() === normalizedEmail
+    );
+    if (!matchedUser) {
+      addToast('No registered account found for this role and email. Register first.', 'error');
+      return false;
     }
+
+    setCurrentUser(matchedUser);
+    addToast(`Welcome back, ${matchedUser.name}! (${matchedUser.role})`, 'success');
+    return true;
   };
 
   // Register New User & Consumer
@@ -197,18 +200,8 @@ export const AppProvider = ({ children }) => {
       avatar: null,
     };
 
-    setUsers((prev) => [newUser, ...prev]);
-    setCurrentUser(newUser);
-
-    // Save user to Supabase (await to catch errors)
-    try {
-      await api.addUser(newUser);
-    } catch (e) {
-      console.error('Failed to save user:', e);
-      addToast('Could not save user to the database', 'error');
-    }
-
-    // If Consumer role, also create consumer profile in database
+    // Create a linked consumer profile before saving the account.
+    let newConsumer;
     if (userData.role === 'Consumer') {
       const connType = userData.connectionType || 'Residential';
       const tariffMap = {
@@ -216,7 +209,7 @@ export const AppProvider = ({ children }) => {
         Commercial: 'LT-2 Commercial',
         Industrial: 'LT-3 Industrial',
       };
-      const newConsumer = {
+      newConsumer = {
         id: consumerId,
         name: userData.name,
         email: userData.email,
@@ -230,31 +223,38 @@ export const AppProvider = ({ children }) => {
         currentReading: 0,
         previousReading: 0,
       };
-      setConsumers((prev) => [newConsumer, ...prev]);
+
+      let consumerSaved = false;
       try {
         await api.addConsumer(newConsumer);
-      } catch (e) {
-        console.error('Failed to save consumer:', e);
-        addToast('Could not save consumer to the database', 'error');
+        consumerSaved = true;
+        await api.addUser(newUser);
+      } catch (error) {
+        if (consumerSaved) {
+          try {
+            await api.deleteConsumer(newConsumer.id);
+          } catch (cleanupError) {
+            console.error('Failed to roll back consumer profile after registration error:', cleanupError);
+          }
+        }
+        throw error;
       }
+    } else {
+      await api.addUser(newUser);
     }
 
+    setUsers((prev) => [newUser, ...prev]);
+    if (newConsumer) setConsumers((prev) => [newConsumer, ...prev]);
+    setCurrentUser(newUser);
     addToast(`Account created! Logged in as ${newUser.name} (${newUser.role})`, 'success');
     return newUser;
   };
 
   const switchRole = (newRole) => {
-    let targetUser = users.find((u) => u.role === newRole);
+    const targetUser = users.find((u) => u.role === newRole);
     if (!targetUser) {
-      targetUser = {
-        id: `USR-${Date.now().toString().slice(-3)}`,
-        name: `${newRole} User`,
-        email: `${newRole.toLowerCase()}@ampora.gov.in`,
-        role: newRole,
-        status: 'Active',
-        lastLogin: 'Just now',
-        consumerId: newRole === 'Consumer' ? 'PWR-2026-1042' : undefined,
-      };
+      addToast(`No registered ${newRole} account is available to switch to.`, 'error');
+      return;
     }
     setCurrentUser(targetUser);
     addToast(`Switched view to ${newRole}`, 'info');
