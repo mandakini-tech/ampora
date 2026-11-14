@@ -21,6 +21,7 @@ export const Badge = ({ children, variant = 'default', size = 'md' }) => {
     'in progress': 'bg-purple-50 text-purple-700 border border-purple-200/80',
     resolved: 'bg-emerald-50 text-emerald-700 border border-emerald-200/80',
     rejected: 'bg-rose-50 text-rose-700 border border-rose-200/80',
+    closed: 'bg-slate-100 text-slate-600 border border-slate-200',
 
     // Generic variants
     primary: 'bg-blue-50 text-blue-700 border border-blue-200',

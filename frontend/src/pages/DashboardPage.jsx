@@ -43,7 +43,7 @@ import {
 } from '../utils/analytics';
 
 export const DashboardPage = () => {
-  const { consumers, bills, payments, complaints, payBill } = useApp();
+  const { consumers, bills, payments, complaints } = useApp();
   const navigate = useNavigate();
 
   // Dynamic Metrics from real database
@@ -361,7 +361,7 @@ export const DashboardPage = () => {
                         <Button
                           variant="primary"
                           size="sm"
-                          onClick={() => payBill(bill.id, 'UPI', 'QUICK-PAY')}
+                          onClick={() => navigate('/payments', { state: { billId: bill.id } })}
                         >
                           Collect Pay
                         </Button>

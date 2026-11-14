@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { StatCard } from '../components/common/StatCard';
 import { Table } from '../components/common/Table';
@@ -14,26 +15,46 @@ import {
   AlertTriangle,
   Receipt,
   Printer,
-  Download,
   ShieldCheck,
   Zap,
 } from 'lucide-react';
 
 export const PaymentsPage = () => {
   const { payments, bills, payBill } = useApp();
+  const location = useLocation();
+  const requestedBillId = location.state?.billId || '';
 
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
 
-  const [isPayModalOpen, setIsPayModalOpen] = useState(false);
-  const [selectedBillId, setSelectedBillId] = useState('');
+  const [isPayModalOpen, setIsPayModalOpen] = useState(Boolean(requestedBillId));
+  const [selectedBillId, setSelectedBillId] = useState(requestedBillId);
   const [paymentMethod, setPaymentMethod] = useState('UPI');
   const [transactionRef, setTransactionRef] = useState('');
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
   // Summaries
-  const totalCollected = payments.reduce((acc, p) => acc + p.amount, 0) + 3820000;
-  const pendingAmount = bills.filter((b) => b.status === 'Pending').reduce((acc, b) => acc + b.totalAmount, 0) + 320000;
-  const overdueAmount = bills.filter((b) => b.status === 'Overdue').reduce((acc, b) => acc + b.totalAmount, 0) + 140000;
+  const totalCollected = payments
+    .filter((payment) => payment.status === 'Successful')
+    .reduce((acc, payment) => acc + (Number(payment.amount) || 0), 0);
+  const pendingAmount = bills
+    .filter((bill) => bill.status === 'Pending')
+    .reduce((acc, bill) => acc + (Number(bill.totalAmount) || 0), 0);
+  const overdueAmount = bills
+    .filter((bill) => bill.status === 'Overdue')
+    .reduce((acc, bill) => acc + (Number(bill.totalAmount) || 0), 0);
+  const now = new Date();
+  const transactionsThisMonth = payments.filter((payment) => {
+    const date = new Date(payment.paymentDate);
+    return payment.status === 'Successful' &&
+      !Number.isNaN(date.getTime()) &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear();
+  }).length;
+  const formatCurrency = (amount) => `₹${amount.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
   const handleOpenReceipt = (payment) => {
     setSelectedReceipt(payment);
@@ -43,17 +64,22 @@ export const PaymentsPage = () => {
   const handleOpenPay = (billId = '') => {
     const defaultBill = billId || bills.find((b) => b.status !== 'Paid')?.id || '';
     setSelectedBillId(defaultBill);
-    setTransactionRef(`UPI-${Date.now().toString().slice(-6)}`);
+    setTransactionRef('');
     setIsPayModalOpen(true);
   };
 
-  const handleCollectSubmit = (e) => {
+  const handleCollectSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedBillId) return;
-    const newTxn = payBill(selectedBillId, paymentMethod, transactionRef);
-    if (newTxn) {
-      setIsPayModalOpen(false);
-      handleOpenReceipt(newTxn);
+    if (!selectedBillId || isSubmittingPayment) return;
+    setIsSubmittingPayment(true);
+    try {
+      const newTxn = await payBill(selectedBillId, paymentMethod, transactionRef);
+      if (newTxn) {
+        setIsPayModalOpen(false);
+        handleOpenReceipt(newTxn);
+      }
+    } finally {
+      setIsSubmittingPayment(false);
     }
   };
 
@@ -124,11 +150,11 @@ export const PaymentsPage = () => {
         <div>
           <h2 className="text-xl font-bold text-slate-900">Payment Collection & Transaction Ledger</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Track real-time payment transactions, collect dues, and issue digital receipts
+            Review recorded payments, collect dues, and issue digital receipts
           </p>
         </div>
         <Button variant="primary" icon={CreditCard} onClick={() => handleOpenPay()}>
-          Collect New Payment
+          Record Payment
         </Button>
       </div>
 
@@ -136,39 +162,31 @@ export const PaymentsPage = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Collected"
-          value={`₹${(totalCollected / 100000).toFixed(2)} Lakhs`}
-          change="+12.4%"
-          isPositive={true}
+          value={formatCurrency(totalCollected)}
           icon={CheckCircle2}
           color="emerald"
-          subtitle="Cleared Dues"
+          subtitle="Successful recorded payments"
         />
         <StatCard
           title="Pending Amount"
-          value={`₹${(pendingAmount / 100000).toFixed(2)} Lakhs`}
-          change="-4.2%"
-          isPositive={true}
+          value={formatCurrency(pendingAmount)}
           icon={Clock}
           color="amber"
-          subtitle="Within Grace Period"
+          subtitle="Bills awaiting payment"
         />
         <StatCard
           title="Overdue Amount"
-          value={`₹${(overdueAmount / 100000).toFixed(2)} Lakhs`}
-          change="-1.5%"
-          isPositive={true}
+          value={formatCurrency(overdueAmount)}
           icon={AlertTriangle}
           color="rose"
-          subtitle="Past Due Date"
+          subtitle="Bills marked overdue"
         />
         <StatCard
           title="Transactions This Month"
-          value={payments.length + 1240}
-          change="+8.9%"
-          isPositive={true}
+          value={transactionsThisMonth}
           icon={CreditCard}
           color="blue"
-          subtitle="UPI / Cards / Cash"
+          subtitle="Successful records this month"
         />
       </div>
 
@@ -181,8 +199,9 @@ export const PaymentsPage = () => {
           filterField="paymentMethod"
           filterOptions={[
             { label: 'UPI', value: 'UPI' },
-            { label: 'Credit/Debit Card', value: 'Credit/Debit Card' },
-            { label: 'Net Banking', value: 'Net Banking' },
+            { label: 'Card', value: 'Card' },
+            { label: 'Credit/Debit Card (legacy)', value: 'Credit/Debit Card' },
+            { label: 'Net Banking (legacy)', value: 'Net Banking' },
             { label: 'Cash', value: 'Cash' },
           ]}
         />
@@ -193,9 +212,12 @@ export const PaymentsPage = () => {
         isOpen={isPayModalOpen}
         onClose={() => setIsPayModalOpen(false)}
         title="Collect Bill Payment"
-        subtitle="Process counter or digital payment collection"
+        subtitle="Record a payment that has already been received"
       >
         <form onSubmit={handleCollectSubmit} className="space-y-4">
+          <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+            Confirm the funds were received before recording the payment. UPI and card transactions must be completed with the provider first; this form does not initiate a transfer.
+          </p>
           <Select
             label="Select Pending Statement / Bill"
             options={bills
@@ -211,25 +233,28 @@ export const PaymentsPage = () => {
 
           <Select
             label="Payment Method"
-            options={['UPI', 'Credit/Debit Card', 'Net Banking', 'Cash']}
+            options={['Cash', 'UPI', 'Card']}
             value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value)}
+            onChange={(e) => {
+              setPaymentMethod(e.target.value);
+              setTransactionRef('');
+            }}
           />
 
           <Input
             label="Transaction Reference / Cheque / Ref No."
-            placeholder="e.g. UPI/7749102/gpay"
+            placeholder={paymentMethod === 'Cash' ? 'Enter cash receipt number' : 'Enter the reference from your provider'}
             value={transactionRef}
             onChange={(e) => setTransactionRef(e.target.value)}
             required
           />
 
           <div className="pt-4 border-t flex items-center justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsPayModalOpen(false)}>
+            <Button type="button" variant="outline" disabled={isSubmittingPayment} onClick={() => setIsPayModalOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="success" icon={CheckCircle2}>
-              Confirm Payment & Issue Receipt
+            <Button type="submit" variant="success" icon={CheckCircle2} disabled={isSubmittingPayment}>
+              {isSubmittingPayment ? 'Saving...' : 'Record Payment & Issue Receipt'}
             </Button>
           </div>
         </form>

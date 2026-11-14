@@ -15,13 +15,11 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  ShieldCheck,
-  UserCheck2,
   User,
 } from 'lucide-react';
 
 export const Sidebar = ({ isCollapsed, setIsCollapsed, isMobileOpen, setIsMobileOpen }) => {
-  const { currentUser, logout, switchRole } = useApp();
+  const { currentUser, logout } = useApp();
   const navigate = useNavigate();
 
   // Navigation Items based on User Role
@@ -48,14 +46,28 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed, isMobileOpen, setIsMobile
     { label: 'Complaints', path: '/complaints', icon: AlertCircle },
   ];
 
+  const fieldNav = [
+    { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { label: 'Consumers', path: '/consumers', icon: Users },
+    { label: 'Meter Readings', path: '/meter-readings', icon: Gauge },
+    { label: 'Complaints', path: '/complaints', icon: AlertCircle },
+  ];
+
   const consumerNav = [
     { label: 'My Portal', path: '/consumer-portal', icon: User },
     { label: 'My Bills', path: '/bills', icon: Receipt },
-    { label: 'Make Payment', path: '/payments', icon: CreditCard },
-    { label: 'Register Complaint', path: '/complaints', icon: AlertCircle },
+    { label: 'Meter Readings', path: '/meter-readings', icon: Gauge },
+    { label: 'My Payments', path: '/payments', icon: CreditCard },
+    { label: 'My Complaints', path: '/complaints', icon: AlertCircle },
   ];
 
-  const navItems = role === 'Administrator' ? adminNav : role === 'Billing Staff' ? staffNav : consumerNav;
+  const navItems = role === 'Administrator'
+    ? adminNav
+    : role === 'Billing Staff'
+      ? staffNav
+      : role === 'Field Officer'
+        ? fieldNav
+        : consumerNav;
 
   const handleLogout = () => {
     logout();
@@ -142,41 +154,6 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed, isMobileOpen, setIsMobile
             );
           })}
         </nav>
-
-        {/* Quick Role Switcher for Viva Demo */}
-        {!isCollapsed && (
-          <div className="p-3 mx-3 my-2 rounded-xl bg-slate-800/40 border border-slate-800">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-              Demo Role Switcher
-            </p>
-            <div className="grid grid-cols-3 gap-1">
-              <button
-                onClick={() => switchRole('Administrator')}
-                className={`px-1.5 py-1 text-[11px] font-medium rounded transition-colors ${
-                  role === 'Administrator' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Admin
-              </button>
-              <button
-                onClick={() => switchRole('Billing Staff')}
-                className={`px-1.5 py-1 text-[11px] font-medium rounded transition-colors ${
-                  role === 'Billing Staff' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Staff
-              </button>
-              <button
-                onClick={() => switchRole('Consumer')}
-                className={`px-1.5 py-1 text-[11px] font-medium rounded transition-colors ${
-                  role === 'Consumer' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Consumer
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Logout section */}
         <div className="p-3 border-t border-slate-800 shrink-0">

@@ -8,24 +8,58 @@
   }
 }
 
-/* Print styles for Bills and Receipts */
+@page {
+  margin: 12mm;
+}
+
 @media print {
+  html,
+  body,
+  #root {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
   body * {
-    visibility: hidden;
+    visibility: hidden !important;
+    transform: none !important;
   }
-  #printable-area, #printable-area * {
-    visibility: visible;
+
+  #printable-area,
+  #printable-area * {
+    visibility: visible !important;
+    color: black !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
   }
+
   #printable-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 20px;
-    background: white;
-    color: black;
+    position: fixed !important;
+    inset: 0 !important;
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: white !important;
   }
+
+  #printable-area table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  #printable-area tr,
+  #printable-area section,
+  #printable-area header,
+  #printable-area footer {
+    break-inside: avoid;
+  }
+
   .no-print {
     display: none !important;
   }

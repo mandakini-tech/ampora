@@ -5,7 +5,6 @@ import {
   Zap,
   User,
   Mail,
-  Lock,
   Phone,
   MapPin,
   ArrowRight,
@@ -17,8 +16,6 @@ import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 
 const CONNECTION_TYPES = ['Residential', 'Commercial', 'Industrial'];
-const ROLES = ['Consumer', 'Field Officer', 'Billing Staff', 'Administrator'];
-
 export const RegisterPage = () => {
   const { register } = useApp();
   const navigate = useNavigate();
@@ -30,8 +27,6 @@ export const RegisterPage = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    password: '',
-    confirmPassword: '',
     role: 'Consumer',
     phone: '',
     address: '',
@@ -47,8 +42,6 @@ export const RegisterPage = () => {
     e.preventDefault();
     if (!formData.name.trim()) return setError('Name is required.');
     if (!formData.email.trim()) return setError('Email is required.');
-    if (formData.password.length < 6) return setError('Password must be at least 6 characters.');
-    if (formData.password !== formData.confirmPassword) return setError('Passwords do not match.');
     setStep(2);
   };
 
@@ -102,14 +95,14 @@ export const RegisterPage = () => {
             Get started with Ampora in minutes
           </h2>
           <p className="text-slate-400 text-base leading-relaxed mb-8">
-            Register your electricity connection today and gain instant access to your bills, meter readings, payment history, and 24/7 support.
+            Register your electricity connection to view bills, meter readings, payment records, and support tickets.
           </p>
           <div className="space-y-3">
             {[
-              'View & pay bills online',
-              'Real-time meter reading tracking',
+              'Review itemized electricity bills',
+              'View meter reading history',
               'Raise and track complaints',
-              'Instant payment receipts',
+              'Print or save full bill statements',
             ].map((feat) => (
               <div key={feat} className="flex items-center gap-3 text-sm text-slate-300">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -144,7 +137,7 @@ export const RegisterPage = () => {
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-slate-900">Create Account</h2>
             <p className="text-xs text-slate-500 mt-1">
-              Step {step} of 2 — {step === 1 ? 'Account credentials' : 'Profile & connection details'}
+              Step {step} of 2 — {step === 1 ? 'Consumer account details' : 'Connection details'}
             </p>
             {/* Step progress bar */}
             <div className="mt-3 h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -183,47 +176,9 @@ export const RegisterPage = () => {
                 placeholder="e.g. rajesh@example.com"
                 required
               />
-              <Input
-                label="Password"
-                icon={Lock}
-                type="password"
-                value={formData.password}
-                onChange={handleChange('password')}
-                placeholder="Min. 6 characters"
-                required
-              />
-              <Input
-                label="Confirm Password"
-                icon={Lock}
-                type="password"
-                value={formData.confirmPassword}
-                onChange={handleChange('confirmPassword')}
-                placeholder="Re-enter password"
-                required
-              />
-
-              {/* Role selection */}
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
-                  Account Role
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {ROLES.map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setFormData((prev) => ({ ...prev, role: r }))}
-                      className={`p-2.5 rounded-xl border text-xs font-semibold transition-all ${
-                        formData.role === r
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900">
+                Password verification is not enabled. Registration creates consumer accounts only; staff accounts must be created by an administrator.
+              </p>
 
               <Button
                 type="submit"

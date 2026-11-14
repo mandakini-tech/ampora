@@ -5,18 +5,15 @@ import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
 import { Input, Select } from '../components/common/Input';
+import { BillDocument, printBillDocument } from '../components/billing/BillDocument';
 import {
   Zap,
   Receipt,
   CreditCard,
-  AlertCircle,
   Calendar,
-  Clock,
   CheckCircle2,
   Download,
   Printer,
-  History,
-  TrendingUp,
   MessageSquare,
 } from 'lucide-react';
 import {
@@ -30,7 +27,7 @@ import {
 } from 'recharts';
 
 export const ConsumerPortalPage = () => {
-  const { currentUser, bills, payments, complaints, consumers, meterReadings, payBill, addComplaint } = useApp();
+  const { currentUser, bills, payments, complaints, consumers, meterReadings, payBill, addComplaint, settings } = useApp();
 
   // Active consumer target: logged-in consumer
   const consumerId = currentUser?.consumerId;
@@ -47,7 +44,8 @@ export const ConsumerPortalPage = () => {
   // State for Pay Now Modal
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [payMethod, setPayMethod] = useState('UPI');
-  const [upiId, setUpiId] = useState('rajesh@upi');
+  const [transactionRef, setTransactionRef] = useState('');
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
   // State for Complaint Modal
   const [isComplaintModalOpen, setIsComplaintModalOpen] = useState(false);
@@ -78,11 +76,19 @@ export const ConsumerPortalPage = () => {
     .sort((a, b) => a.timestamp - b.timestamp)
     .slice(-12);
 
-  const handlePaySubmit = (e) => {
+  const handlePaySubmit = async (e) => {
     e.preventDefault();
-    if (!currentBill) return;
-    payBill(currentBill.id, payMethod, `${payMethod}/AUTOPAY-${Date.now().toString().slice(-4)}`);
-    setIsPayModalOpen(false);
+    if (!currentBill || isSubmittingPayment) return;
+    setIsSubmittingPayment(true);
+    try {
+      const payment = await payBill(currentBill.id, payMethod, transactionRef);
+      if (payment) {
+        setTransactionRef('');
+        setIsPayModalOpen(false);
+      }
+    } finally {
+      setIsSubmittingPayment(false);
+    }
   };
 
   const handleComplaintSubmit = (e) => {
@@ -223,15 +229,19 @@ export const ConsumerPortalPage = () => {
                   <Receipt className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-slate-900">View & Download Bill</p>
-                  <p className="text-[11px] text-slate-500">Download current PDF statement</p>
+                  <p className="text-xs font-bold text-slate-900">View & Save Bill</p>
+                  <p className="text-[11px] text-slate-500">Print or save the full itemized statement</p>
                 </div>
               </div>
             </button>
 
             <button
               disabled={!currentBill || currentBill.status === 'Paid'}
-              onClick={() => currentBill && setIsPayModalOpen(true)}
+              onClick={() => {
+                if (!currentBill) return;
+                setTransactionRef('');
+                setIsPayModalOpen(true);
+              }}
               className="w-full p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 flex items-center justify-between text-left transition-all group disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="flex items-center gap-3">
@@ -239,8 +249,8 @@ export const ConsumerPortalPage = () => {
                   <CreditCard className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-slate-900">Instant Online Payment</p>
-                  <p className="text-[11px] text-slate-500">UPI, Cards, NetBanking</p>
+                  <p className="text-xs font-bold text-slate-900">Record Payment</p>
+                  <p className="text-[11px] text-slate-500">Cash, UPI, or card</p>
                 </div>
               </div>
             </button>
@@ -349,14 +359,17 @@ export const ConsumerPortalPage = () => {
         </Card>
       </div>
 
-      {/* ONLINE PAYMENT MODAL */}
+      {/* PAYMENT RECORD MODAL */}
       <Modal
         isOpen={isPayModalOpen && Boolean(currentBill)}
         onClose={() => setIsPayModalOpen(false)}
-        title="Instant Electricity Bill Payment"
-        subtitle={currentBill ? `Clearing Invoice #${currentBill.id} - Total ₹${currentBill.totalAmount}` : undefined}
+        title="Record Payment"
+        subtitle={currentBill ? `Invoice #${currentBill.id} - Total ₹${currentBill.totalAmount}` : undefined}
       >
         {currentBill && <form onSubmit={handlePaySubmit} className="space-y-4">
+          <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+            Complete UPI or card payments with your provider first. Cash payments must already have been handed to staff. This form records a completed payment; it does not initiate a transfer.
+          </p>
           <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 flex justify-between items-center text-xs">
             <div>
               <p className="text-slate-500">Payable Amount:</p>
@@ -369,37 +382,27 @@ export const ConsumerPortalPage = () => {
 
           <Select
             label="Choose Payment Method"
-            options={['UPI', 'Credit/Debit Card', 'Net Banking']}
+            options={['Cash', 'UPI', 'Card']}
             value={payMethod}
-            onChange={(e) => setPayMethod(e.target.value)}
+            onChange={(e) => {
+              setPayMethod(e.target.value);
+              setTransactionRef('');
+            }}
+          />
+          <Input
+            label={payMethod === 'Cash' ? 'Cash receipt number (if available)' : 'Payment transaction reference'}
+            placeholder={payMethod === 'Cash' ? 'Enter receipt number' : 'Enter the reference from your provider'}
+            value={transactionRef}
+            onChange={(e) => setTransactionRef(e.target.value)}
+            required={payMethod !== 'Cash'}
           />
 
-          {payMethod === 'UPI' && (
-            <Input
-              label="Enter UPI ID (VPA)"
-              placeholder="e.g. mobile@upi"
-              value={upiId}
-              onChange={(e) => setUpiId(e.target.value)}
-              required
-            />
-          )}
-
-          {payMethod === 'Credit/Debit Card' && (
-            <div className="space-y-3">
-              <Input label="Card Number" placeholder="4532 •••• •••• 8920" required />
-              <div className="grid grid-cols-2 gap-3">
-                <Input label="Expiry Date" placeholder="MM/YY" required />
-                <Input label="CVV" type="password" placeholder="•••" required />
-              </div>
-            </div>
-          )}
-
           <div className="pt-4 border-t flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsPayModalOpen(false)}>
+            <Button type="button" variant="outline" disabled={isSubmittingPayment} onClick={() => setIsPayModalOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="success" icon={CheckCircle2} size="lg">
-              Authorize Payment ₹{currentBill.totalAmount}
+            <Button type="submit" variant="success" icon={CheckCircle2} size="lg" disabled={isSubmittingPayment}>
+              {isSubmittingPayment ? 'Saving...' : `Confirm payment ₹${currentBill.totalAmount}`}
             </Button>
           </div>
         </form>}
@@ -454,32 +457,20 @@ export const ConsumerPortalPage = () => {
       >
         {viewingBill && (
           <div className="space-y-4">
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-xs">
-              <div className="flex justify-between border-b pb-2">
-                <span className="text-slate-500">Consumer Name:</span>
-                <span className="font-bold">{viewingBill.consumerName}</span>
-              </div>
-              <div className="flex justify-between border-b pb-2">
-                <span className="text-slate-500">Billing Period:</span>
-                <span>{viewingBill.billingPeriod}</span>
-              </div>
-              <div className="flex justify-between border-b pb-2">
-                <span className="text-slate-500">Units Consumed:</span>
-                <span className="font-bold">{viewingBill.unitsConsumed} kWh</span>
-              </div>
-              <div className="flex justify-between text-sm font-bold text-slate-900 pt-1">
-                <span>Total Amount:</span>
-                <span className="text-blue-600">₹{viewingBill.totalAmount}</span>
-              </div>
-            </div>
+            <BillDocument bill={viewingBill} consumer={consumerProfile} settings={settings} />
 
-            <div className="flex justify-between pt-2">
+            <div className="no-print flex justify-between pt-2">
               <Button variant="outline" onClick={() => setIsBillModalOpen(false)}>
                 Close
               </Button>
-              <Button variant="primary" icon={Printer} onClick={() => window.print()}>
-                Print Copy
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="secondary" icon={Printer} onClick={() => printBillDocument(viewingBill)}>
+                  Print Bill
+                </Button>
+                <Button variant="primary" icon={Download} onClick={() => printBillDocument(viewingBill)}>
+                  Save as PDF
+                </Button>
+              </div>
             </div>
           </div>
         )}

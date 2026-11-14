@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { api, defaultSettings, defaultTariffSlabs, defaultAdminUser } from '../services/api';
 import { isSupabaseConfigured } from '../lib/supabase';
 
@@ -47,6 +47,9 @@ export const AppProvider = ({ children }) => {
     const saved = localStorage.getItem('ampora_complaints');
     return saved ? JSON.parse(saved) : [];
   });
+  const complaintsRef = useRef(complaints);
+  const currentUserRef = useRef(currentUser);
+  const complaintSnapshotReadyRef = useRef(false);
 
   const [users, setUsers] = useState(() => {
     const saved = localStorage.getItem('ampora_users');
@@ -69,10 +72,12 @@ export const AppProvider = ({ children }) => {
 
   // Toasts state
   const [toasts, setToasts] = useState([]);
+  const [notifications, setNotifications] = useState([]);
 
   // Persistence side effects to localStorage (cache)
   useEffect(() => {
     localStorage.setItem('ampora_user', JSON.stringify(currentUser));
+    currentUserRef.current = currentUser;
   }, [currentUser]);
 
   useEffect(() => {
@@ -118,11 +123,41 @@ export const AppProvider = ({ children }) => {
         setMeterReadings(data.meterReadings || []);
         setBills(data.bills || []);
         setPayments(data.payments || []);
-        setComplaints(data.complaints || []);
+        const nextComplaints = data.complaints || [];
+        if (complaintSnapshotReadyRef.current) {
+          const previousById = new Map(complaintsRef.current.map((complaint) => [complaint.id, complaint]));
+          const activeUser = currentUserRef.current;
+          nextComplaints.forEach((complaint) => {
+            const previous = previousById.get(complaint.id);
+            if (!previous && activeUser && activeUser.role !== 'Consumer') {
+              addNotification({
+                title: 'New consumer complaint',
+                message: `${complaint.consumerName} submitted ${complaint.type}.`,
+                type: 'info',
+              });
+            } else if (
+              previous &&
+              activeUser?.role === 'Consumer' &&
+              complaint.consumerId === activeUser.consumerId &&
+              (previous.status !== complaint.status || previous.resolutionNotes !== complaint.resolutionNotes)
+            ) {
+              const details = complaint.resolutionNotes ? ` ${complaint.resolutionNotes}` : '';
+              addNotification({
+                title: `Complaint ${complaint.status}`,
+                message: `Your complaint ${complaint.id} is now ${complaint.status}.${details}`,
+                type: complaint.status === 'Resolved' ? 'success' : 'info',
+              });
+            }
+          });
+        }
+        complaintsRef.current = nextComplaints;
+        complaintSnapshotReadyRef.current = true;
+        setComplaints(nextComplaints);
         setUsers(data.users || []);
-        if (currentUser) {
+        const activeUser = currentUserRef.current;
+        if (activeUser) {
           const registeredUser = (data.users || []).find(
-            (user) => user.id === currentUser.id && user.email === currentUser.email
+            (user) => user.id === activeUser.id && user.email === activeUser.email
           );
           if (registeredUser) {
             setCurrentUser(registeredUser);
@@ -146,6 +181,8 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     refreshData();
+    const refreshInterval = window.setInterval(() => refreshData(), 15000);
+    return () => window.clearInterval(refreshInterval);
   }, []);
 
   // Toast Helper
@@ -155,6 +192,19 @@ export const AppProvider = ({ children }) => {
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
+  };
+
+  const addNotification = ({ title, message, type }) => {
+    const id = `${Date.now()}-${Math.random()}`;
+    setNotifications((prev) => [
+      { id, title, message, type, createdAt: new Date().toISOString(), read: false },
+      ...prev,
+    ].slice(0, 20));
+    addToast(message, type);
+  };
+
+  const markNotificationsRead = () => {
+    setNotifications((prev) => prev.map((notification) => ({ ...notification, read: true })));
   };
 
   const persist = (request, message) => {
@@ -248,16 +298,6 @@ export const AppProvider = ({ children }) => {
     setCurrentUser(newUser);
     addToast(`Account created! Logged in as ${newUser.name} (${newUser.role})`, 'success');
     return newUser;
-  };
-
-  const switchRole = (newRole) => {
-    const targetUser = users.find((u) => u.role === newRole);
-    if (!targetUser) {
-      addToast(`No registered ${newRole} account is available to switch to.`, 'error');
-      return;
-    }
-    setCurrentUser(targetUser);
-    addToast(`Switched view to ${newRole}`, 'info');
   };
 
   const logout = () => {
@@ -439,7 +479,7 @@ export const AppProvider = ({ children }) => {
     return newBill;
   };
 
-  const payBill = (billId, paymentMethod = 'UPI', transactionRef = '') => {
+  const payBill = async (billId, paymentMethod = 'UPI', transactionRef = '') => {
     const targetBill = bills.find((b) => b.id === billId);
     if (!targetBill) {
       addToast('Bill not found', 'error');
@@ -448,15 +488,10 @@ export const AppProvider = ({ children }) => {
 
     if (targetBill.status === 'Paid') {
       addToast('Bill is already paid!', 'info');
-      return true;
+      return false;
     }
 
-    setBills((prev) =>
-      prev.map((b) => (b.id === billId ? { ...b, status: 'Paid' } : b))
-    );
-    persist(api.updateBillStatus(billId, 'Paid'), 'Could not update bill in the database');
-
-    const txnId = `TXN-${Math.floor(800000 + Math.random() * 100000)}`;
+    const txnId = `TXN-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const now = new Date();
     const formattedDate = `${now.toISOString().split('T')[0]} ${now.toTimeString().slice(0, 5)}`;
 
@@ -472,17 +507,44 @@ export const AppProvider = ({ children }) => {
       status: 'Successful',
     };
 
+    let billStatusUpdated = false;
+    try {
+      await api.updateBillStatus(billId, 'Paid');
+      billStatusUpdated = true;
+      await api.addPayment(newPayment);
+    } catch (error) {
+      if (billStatusUpdated) {
+        try {
+          await api.updateBillStatus(billId, targetBill.status);
+        } catch (rollbackError) {
+          console.error('Could not restore bill status after payment recording failed:', rollbackError);
+          addToast('Payment could not be recorded and the bill status could not be restored. Contact support.', 'error');
+          return false;
+        }
+      }
+      console.error('Could not record payment:', error);
+      addToast('Payment could not be recorded. The bill remains unpaid.', 'error');
+      return false;
+    }
+
+    setBills((prev) =>
+      prev.map((b) => (b.id === billId ? { ...b, status: 'Paid' } : b))
+    );
     setPayments((prev) => [newPayment, ...prev]);
-    persist(api.addPayment(newPayment), 'Could not save payment to the database');
-    addToast(`Payment of ₹${targetBill.totalAmount} received for ${targetBill.id}`, 'success');
+    addToast(`Payment of ₹${targetBill.totalAmount} recorded for ${targetBill.id}`, 'success');
     return newPayment;
   };
 
   const addComplaint = (complaintData) => {
-    const id = `CMP-${Math.floor(400 + Math.random() * 100)}`;
+    const id = `CMP-${Date.now()}`;
+    const consumerId = complaintData.consumerId || currentUser?.consumerId;
+    if (!consumerId) {
+      addToast('Select a consumer profile before submitting the complaint.', 'error');
+      return false;
+    }
     const newComplaint = {
       id,
-      consumerId: complaintData.consumerId || currentUser?.consumerId || 'PWR-2026-1042',
+      consumerId,
       consumerName: complaintData.consumerName || currentUser?.name || 'Customer',
       type: complaintData.type,
       description: complaintData.description,
@@ -493,6 +555,7 @@ export const AppProvider = ({ children }) => {
       resolutionNotes: '',
     };
 
+    complaintsRef.current = [newComplaint, ...complaintsRef.current];
     setComplaints((prev) => [newComplaint, ...prev]);
     persist(api.addComplaint(newComplaint), 'Could not save complaint to the database');
     addToast(`Complaint #${id} submitted successfully`, 'success');
@@ -500,19 +563,16 @@ export const AppProvider = ({ children }) => {
   };
 
   const updateComplaint = (id, status, resolutionNotes = '', assignedTo = '') => {
-    setComplaints((prev) =>
-      prev.map((c) => {
-        if (c.id === id) {
-          return {
-            ...c,
-            status: status || c.status,
-            resolutionNotes: resolutionNotes !== undefined ? resolutionNotes : c.resolutionNotes,
-            assignedTo: assignedTo || c.assignedTo,
-          };
+    const update = (complaint) => complaint.id === id
+      ? {
+          ...complaint,
+          status: status || complaint.status,
+          resolutionNotes: resolutionNotes !== undefined ? resolutionNotes : complaint.resolutionNotes,
+          assignedTo: assignedTo || complaint.assignedTo,
         }
-        return c;
-      })
-    );
+      : complaint;
+    complaintsRef.current = complaintsRef.current.map(update);
+    setComplaints((prev) => prev.map(update));
     persist(api.updateComplaint(id, { status, resolutionNotes, assignedTo }), 'Could not update complaint in the database');
     addToast(`Complaint #${id} updated to ${status}`, 'success');
   };
@@ -563,7 +623,6 @@ export const AppProvider = ({ children }) => {
         login,
         register,
         logout,
-        switchRole,
         consumers,
         addConsumer,
         updateConsumer,
@@ -578,6 +637,8 @@ export const AppProvider = ({ children }) => {
         complaints,
         addComplaint,
         updateComplaint,
+        notifications,
+        markNotificationsRead,
         users,
         addUser,
         updateUser,

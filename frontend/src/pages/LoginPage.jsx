@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import {
   Zap,
-  Lock,
   Mail,
   ShieldCheck,
   UserCheck,
@@ -11,7 +10,6 @@ import {
   MapPin,
   ArrowRight,
   Sparkles,
-  CheckCircle2,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Input, Select } from '../components/common/Input';
@@ -20,10 +18,8 @@ export const LoginPage = () => {
   const { login } = useApp();
   const navigate = useNavigate();
 
-  const [role, setRole] = useState('Administrator');
-  const [email, setEmail] = useState('admin@ampora.gov.in');
-  const [password, setPassword] = useState('password123');
-  const [rememberMe, setRememberMe] = useState(true);
+  const [role, setRole] = useState('Consumer');
+  const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -32,7 +28,7 @@ export const LoginPage = () => {
     setIsLoading(true);
     setError('');
     setTimeout(() => {
-      const signedIn = login(role, email, password);
+      const signedIn = login(role, email);
       setIsLoading(false);
       if (!signedIn) {
         setError('No registered account matches this role and email. Register your connection first.');
@@ -44,32 +40,6 @@ export const LoginPage = () => {
         navigate('/dashboard');
       }
     }, 600);
-  };
-
-  const handleQuickDemo = (demoRole) => {
-    setIsLoading(true);
-    let demoEmail = 'admin@ampora.gov.in';
-    if (demoRole === 'Billing Staff') demoEmail = 'billing@ampora.gov.in';
-    if (demoRole === 'Consumer') demoEmail = 'consumer@ampora.gov.in';
-    if (demoRole === 'Field Officer') demoEmail = 'field@ampora.gov.in';
-
-    setRole(demoRole);
-    setEmail(demoEmail);
-    setError('');
-
-    setTimeout(() => {
-      const signedIn = login(demoRole, demoEmail, 'password123');
-      setIsLoading(false);
-      if (!signedIn) {
-        setError('This demo account is not in the database. Register an account or use a seeded account.');
-        return;
-      }
-      if (demoRole === 'Consumer') {
-        navigate('/consumer-portal');
-      } else {
-        navigate('/dashboard');
-      }
-    }, 400);
   };
 
   return (
@@ -106,22 +76,22 @@ export const LoginPage = () => {
             Automated Tariff Calculation, Billing & Consumer Management
           </h2>
           <p className="text-slate-400 text-base leading-relaxed mb-8">
-            Empowering utility boards and consumers with real-time meter tracking, slab-based invoice generation, instant online payments, and direct complaint resolution.
+            Manage consumer accounts, meter readings, itemized bills, payment records, and complaint status from one portal.
           </p>
 
-          {/* Key Feature Stats Cards */}
+          {/* Core portal capabilities */}
           <div className="grid grid-cols-3 gap-4">
             <div className="p-4 rounded-xl bg-slate-800/80 border border-slate-700/60 backdrop-blur-xs">
-              <p className="text-2xl font-bold text-white">14.8K+</p>
-              <p className="text-xs text-slate-400 mt-0.5">Active Consumers</p>
+              <p className="text-sm font-bold text-white">Usage</p>
+              <p className="text-xs text-slate-400 mt-0.5">Meter reading history</p>
             </div>
             <div className="p-4 rounded-xl bg-slate-800/80 border border-slate-700/60 backdrop-blur-xs">
-              <p className="text-2xl font-bold text-emerald-400">99.4%</p>
-              <p className="text-xs text-slate-400 mt-0.5">On-Time Payments</p>
+              <p className="text-sm font-bold text-emerald-400">Bills</p>
+              <p className="text-xs text-slate-400 mt-0.5">Itemized statements</p>
             </div>
             <div className="p-4 rounded-xl bg-slate-800/80 border border-slate-700/60 backdrop-blur-xs">
-              <p className="text-2xl font-bold text-blue-400">4 Slabs</p>
-              <p className="text-xs text-slate-400 mt-0.5">Tariff Engine</p>
+              <p className="text-sm font-bold text-blue-400">Support</p>
+              <p className="text-xs text-slate-400 mt-0.5">Complaint tracking</p>
             </div>
           </div>
         </div>
@@ -163,44 +133,6 @@ export const LoginPage = () => {
             </div>
           )}
 
-          {/* Viva Quick Demo Selector */}
-          <div className="mb-6 p-3 rounded-xl bg-blue-50/70 border border-blue-200">
-            <p className="text-[11px] font-bold text-blue-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-              Viva Demonstration Quick Login
-            </p>
-            <div className="grid grid-cols-4 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('Administrator')}
-                className="px-2 py-1.5 rounded-lg bg-white border border-blue-300 hover:bg-blue-600 hover:text-white text-blue-700 text-xs font-semibold shadow-2xs transition-colors text-center"
-              >
-                Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('Billing Staff')}
-                className="px-2 py-1.5 rounded-lg bg-white border border-blue-300 hover:bg-blue-600 hover:text-white text-blue-700 text-xs font-semibold shadow-2xs transition-colors text-center"
-              >
-                Billing
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('Consumer')}
-                className="px-2 py-1.5 rounded-lg bg-white border border-blue-300 hover:bg-blue-600 hover:text-white text-blue-700 text-xs font-semibold shadow-2xs transition-colors text-center"
-              >
-                Consumer
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('Field Officer')}
-                className="px-2 py-1.5 rounded-lg bg-white border border-blue-300 hover:bg-blue-600 hover:text-white text-blue-700 text-xs font-semibold shadow-2xs transition-colors text-center"
-              >
-                Field
-              </button>
-            </div>
-          </div>
-
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Role Selection Selector Tabs */}
             <div>
@@ -210,10 +142,7 @@ export const LoginPage = () => {
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setRole('Administrator');
-                    setEmail('admin@ampora.gov.in');
-                  }}
+                  onClick={() => setRole('Administrator')}
                   className={`p-2.5 rounded-xl border text-xs font-semibold transition-all flex flex-col items-center gap-1.5 ${
                     role === 'Administrator'
                       ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-2xs'
@@ -225,10 +154,7 @@ export const LoginPage = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setRole('Billing Staff');
-                    setEmail('billing@ampora.gov.in');
-                  }}
+                  onClick={() => setRole('Billing Staff')}
                   className={`p-2.5 rounded-xl border text-xs font-semibold transition-all flex flex-col items-center gap-1.5 ${
                     role === 'Billing Staff'
                       ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-2xs'
@@ -240,10 +166,7 @@ export const LoginPage = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setRole('Consumer');
-                    setEmail('consumer@ampora.gov.in');
-                  }}
+                  onClick={() => setRole('Consumer')}
                   className={`p-2.5 rounded-xl border text-xs font-semibold transition-all flex flex-col items-center gap-1.5 ${
                     role === 'Consumer'
                       ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-2xs'
@@ -255,10 +178,7 @@ export const LoginPage = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setRole('Field Officer');
-                    setEmail('field@ampora.gov.in');
-                  }}
+                  onClick={() => setRole('Field Officer')}
                   className={`p-2.5 rounded-xl border text-xs font-semibold transition-all flex flex-col items-center gap-1.5 ${
                     role === 'Field Officer'
                       ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-2xs'
@@ -281,46 +201,9 @@ export const LoginPage = () => {
                 setEmail(e.target.value);
                 setError('');
               }}
-              placeholder="e.g. user@ampora.gov.in"
+              placeholder="Enter your registered account email"
               required
             />
-
-            {/* Password Field */}
-            <Input
-              label="Password"
-              icon={Lock}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
-
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between text-xs pt-1">
-              <label className="flex items-center gap-2 cursor-pointer text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span>Remember me</span>
-              </label>
-              <a
-                href="#forgot"
-                onClick={(e) => {
-                  e.preventDefault();
-                  alert('Password reset link sent to registered email.');
-                }}
-                className="text-blue-600 hover:text-blue-700 font-semibold"
-              >
-                Forgot password?
-              </a>
-            </div>
-            <p className="text-[11px] text-slate-400">
-              Password authentication is not configured in this demo.
-            </p>
 
             {/* Submit Button */}
             <Button

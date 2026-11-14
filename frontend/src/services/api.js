@@ -616,14 +616,18 @@ export const api = {
       return;
     }
 
-    if (isSupabaseConfigured() && supabase) {
-      try {
-        const { error } = await supabase.from('bills').update({ status }).eq('id', id);
-        if (error) console.error('Supabase updateBillStatus error:', error);
-      } catch (e) {
-        console.error('Supabase updateBillStatus exception:', e);
-      }
+    if (!isSupabaseConfigured() || !supabase) {
+      throw new Error('Database is not configured; bill status was not updated.');
     }
+
+    const { data, error } = await supabase
+      .from('bills')
+      .update({ status })
+      .eq('id', id)
+      .select('id')
+      .single();
+    if (error) throw error;
+    if (!data) throw new Error(`Bill ${id} was not found; status was not updated.`);
   },
 
   // Payments
@@ -633,14 +637,12 @@ export const api = {
       return;
     }
 
-    if (isSupabaseConfigured() && supabase) {
-      try {
-        const { error } = await supabase.from('payments').insert([mapPaymentToDb(payment)]);
-        if (error) console.error('Supabase addPayment error:', error);
-      } catch (e) {
-        console.error('Supabase addPayment exception:', e);
-      }
+    if (!isSupabaseConfigured() || !supabase) {
+      throw new Error('Database is not configured; payment was not saved.');
     }
+
+    const { error } = await supabase.from('payments').insert([mapPaymentToDb(payment)]);
+    if (error) throw error;
   },
 
   // Complaints

@@ -16,15 +16,32 @@ import { ComplaintsPage } from './pages/ComplaintsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ConsumerBillsPage } from './pages/ConsumerBillsPage';
+import { ConsumerComplaintsPage } from './pages/ConsumerComplaintsPage';
+import { ConsumerMeterReadingsPage } from './pages/ConsumerMeterReadingsPage';
+import { ConsumerPaymentsPage } from './pages/ConsumerPaymentsPage';
 
 // Protected Route Guard component
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, allowedRoles }) => {
   const { currentUser } = useApp();
   if (!currentUser) {
     return <Navigate to="/login" replace />;
   }
+  if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
+    return <Navigate to={currentUser.role === 'Consumer' ? '/consumer-portal' : '/dashboard'} replace />;
+  }
   return <Layout>{children}</Layout>;
 };
+
+const RoleAwarePage = ({ consumerPage, staffPage }) => {
+  const { currentUser } = useApp();
+  return currentUser?.role === 'Consumer' ? consumerPage : staffPage;
+};
+
+const STAFF_ROLES = ['Administrator', 'Billing Staff', 'Field Officer'];
+const BILLING_ROLES = ['Administrator', 'Billing Staff'];
+const BILLING_PAGE_ROLES = [...BILLING_ROLES, 'Consumer'];
+const COMPLAINT_PAGE_ROLES = [...STAFF_ROLES, 'Consumer'];
 
 // Root index redirect based on role
 const RootRedirect = () => {
@@ -47,7 +64,7 @@ export default function App() {
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={STAFF_ROLES}>
                 <DashboardPage />
               </ProtectedRoute>
             }
@@ -55,7 +72,7 @@ export default function App() {
           <Route
             path="/consumers"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={STAFF_ROLES}>
                 <ConsumersPage />
               </ProtectedRoute>
             }
@@ -63,31 +80,40 @@ export default function App() {
           <Route
             path="/meter-readings"
             element={
-              <ProtectedRoute>
-                <MeterReadingPage />
+              <ProtectedRoute allowedRoles={COMPLAINT_PAGE_ROLES}>
+                <RoleAwarePage
+                  consumerPage={<ConsumerMeterReadingsPage />}
+                  staffPage={<MeterReadingPage />}
+                />
               </ProtectedRoute>
             }
           />
           <Route
             path="/bills"
             element={
-              <ProtectedRoute>
-                <BillGenerationPage />
+              <ProtectedRoute allowedRoles={BILLING_PAGE_ROLES}>
+                <RoleAwarePage
+                  consumerPage={<ConsumerBillsPage />}
+                  staffPage={<BillGenerationPage />}
+                />
               </ProtectedRoute>
             }
           />
           <Route
             path="/payments"
             element={
-              <ProtectedRoute>
-                <PaymentsPage />
+              <ProtectedRoute allowedRoles={BILLING_PAGE_ROLES}>
+                <RoleAwarePage
+                  consumerPage={<ConsumerPaymentsPage />}
+                  staffPage={<PaymentsPage />}
+                />
               </ProtectedRoute>
             }
           />
           <Route
             path="/consumer-portal"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['Consumer']}>
                 <ConsumerPortalPage />
               </ProtectedRoute>
             }
@@ -95,15 +121,18 @@ export default function App() {
           <Route
             path="/complaints"
             element={
-              <ProtectedRoute>
-                <ComplaintsPage />
+              <ProtectedRoute allowedRoles={COMPLAINT_PAGE_ROLES}>
+                <RoleAwarePage
+                  consumerPage={<ConsumerComplaintsPage />}
+                  staffPage={<ComplaintsPage />}
+                />
               </ProtectedRoute>
             }
           />
           <Route
             path="/reports"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['Administrator']}>
                 <ReportsPage />
               </ProtectedRoute>
             }
@@ -111,7 +140,7 @@ export default function App() {
           <Route
             path="/users"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['Administrator']}>
                 <UsersPage />
               </ProtectedRoute>
             }
@@ -119,7 +148,7 @@ export default function App() {
           <Route
             path="/settings"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['Administrator']}>
                 <SettingsPage />
               </ProtectedRoute>
             }

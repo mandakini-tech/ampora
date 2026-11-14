@@ -7,17 +7,12 @@ import { Modal } from '../components/common/Modal';
 import { Card } from '../components/common/Card';
 import { Input, Select } from '../components/common/Input';
 import {
-  AlertTriangle,
   PlusCircle,
   CheckCircle2,
-  Clock,
-  UserCheck,
-  MessageSquare,
-  Zap,
 } from 'lucide-react';
 
 export const ComplaintsPage = () => {
-  const { complaints, addComplaint, updateComplaint, consumers } = useApp();
+  const { complaints, addComplaint, updateComplaint, consumers, addToast } = useApp();
 
   // Modals state
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
@@ -34,7 +29,7 @@ export const ComplaintsPage = () => {
 
   // Update complaint form state
   const [updateStatus, setUpdateStatus] = useState('In Progress');
-  const [assignedTo, setAssignedTo] = useState('Suresh (Field Supervisor)');
+  const [assignedTo, setAssignedTo] = useState('');
   const [resolutionNotes, setResolutionNotes] = useState('');
 
   const handleOpenSubmit = () => {
@@ -50,7 +45,7 @@ export const ComplaintsPage = () => {
   const handleOpenUpdate = (complaint) => {
     setSelectedComplaint(complaint);
     setUpdateStatus(complaint.status);
-    setAssignedTo(complaint.assignedTo || 'Suresh (Field Supervisor)');
+    setAssignedTo(complaint.assignedTo === 'Unassigned' ? '' : complaint.assignedTo || '');
     setResolutionNotes(complaint.resolutionNotes || '');
     setIsUpdateModalOpen(true);
   };
@@ -58,9 +53,13 @@ export const ComplaintsPage = () => {
   const handleSubmitNew = (e) => {
     e.preventDefault();
     const consumerObj = consumers.find((c) => c.id === newComplaintData.consumerId);
+    if (!consumerObj) {
+      addToast('Select an existing consumer before submitting a complaint.', 'error');
+      return;
+    }
     addComplaint({
       ...newComplaintData,
-      consumerName: consumerObj?.name || 'Rajesh Kumar',
+      consumerName: consumerObj.name,
     });
     setIsSubmitModalOpen(false);
   };
@@ -161,7 +160,7 @@ export const ComplaintsPage = () => {
             { label: 'Submitted', value: 'Submitted' },
             { label: 'In Progress', value: 'In Progress' },
             { label: 'Resolved', value: 'Resolved' },
-            { label: 'Rejected', value: 'Rejected' },
+            { label: 'Closed', value: 'Closed' },
           ]}
         />
       </Card>
@@ -193,7 +192,7 @@ export const ComplaintsPage = () => {
             />
             <Select
               label="Priority Level"
-              options={['Low', 'Medium', 'High']}
+              options={['Low', 'Medium', 'High', 'Critical']}
               value={newComplaintData.priority}
               onChange={(e) => setNewComplaintData({ ...newComplaintData, priority: e.target.value })}
             />
@@ -241,7 +240,7 @@ export const ComplaintsPage = () => {
 
             <Select
               label="Update Status"
-              options={['Submitted', 'In Progress', 'Resolved', 'Rejected']}
+              options={['Submitted', 'In Progress', 'Resolved', 'Closed']}
               value={updateStatus}
               onChange={(e) => setUpdateStatus(e.target.value)}
             />
@@ -250,7 +249,7 @@ export const ComplaintsPage = () => {
               label="Assigned Officer / Technical Team"
               value={assignedTo}
               onChange={(e) => setAssignedTo(e.target.value)}
-              placeholder="Field Team A"
+              placeholder="Field team or officer"
             />
 
             <div>
@@ -263,6 +262,7 @@ export const ComplaintsPage = () => {
                 placeholder="Enter inspection feedback and action taken..."
                 value={resolutionNotes}
                 onChange={(e) => setResolutionNotes(e.target.value)}
+                required={updateStatus === 'Resolved'}
               />
             </div>
 
